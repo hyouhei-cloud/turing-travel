@@ -573,10 +573,25 @@ const yen = n => "¥" + Math.round(n).toLocaleString("ja-JP");
 const $ = id => document.getElementById(id);
 const P = (lon,lat) => [(lon+180)/360*1000, (90-lat)/180*500];
 
+// 記号の形は2つ：手で打つ「#mp-hnd」と、アプリが送る「#mphndmphnd0」
+// （同じ組み合わせを2回並べ、最後に0。途中の1文字が抜けても、どこかに正しい5文字が残る）
 function parseHash(){
   const h = decodeURIComponent(location.hash.replace(/^#/,"")).toLowerCase();
-  const [s,o] = h.split("-");
-  return { site: SITES[s] ? s : "mp", origin: ORIGINS[o] ? o : "hnd" };
+  if (h.includes("-")){
+    const [s,o] = h.split("-");
+    return { site: SITES[s] ? s : "mp", origin: ORIGINS[o] ? o : "hnd" };
+  }
+  const t = h.replace(/[^a-z]/g,"");
+  for (let i = 0; i + 5 <= t.length; i++){
+    const s = t.slice(i,i+2), o = t.slice(i+2,i+5);
+    if (SITES[s] && ORIGINS[o]) return { site: s, origin: o };
+  }
+  // 空港の記号が壊れていても、遺産だけは探す
+  for (let i = 0; i + 2 <= t.length; i++){
+    const s = t.slice(i,i+2);
+    if (SITES[s]) return { site: s, origin: "hnd" };
+  }
+  return { site: "mp", origin: "hnd" };
 }
 
 function drawMap(site, origin){
