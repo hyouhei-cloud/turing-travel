@@ -43,7 +43,11 @@ h2{font-size:15px;margin:0 0 10px}
 .leg .d{font-size:12px;color:var(--sub);margin-top:2px;line-height:1.5}
 .leg .p{font-size:13px;font-weight:700;white-space:nowrap}
 .leg .tm{font-size:12px;font-weight:700;color:var(--accent);margin-top:3px;line-height:1.6}
-.leg .tm small{font-size:11px;font-weight:600;color:var(--sub)}
+.leg .tm small{font-size:11px;font-weight:600;color:var(--sub);white-space:nowrap;display:inline-block}
+.leg.goal .ic{background:#fdf1dc;color:#b07a1e}
+.leg.goal .t{color:#8a5a12}
+.leg.goal::before{display:none}
+.subhd{font-size:12px;font-weight:700;color:var(--sub);margin:16px 0 8px;padding-top:12px;border-top:1px dashed var(--line)}
 .hotel{display:flex;gap:12px;align-items:flex-start;padding:10px 0;border-top:1px solid var(--line)}
 .hotel:first-of-type{border-top:none;padding-top:0}
 .hotel .ph{flex:none;width:64px;height:64px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:28px}
@@ -618,6 +622,27 @@ function parseHash(){
   return { site: "mp", origin: "hnd", taxi: null };
 }
 
+// 交通ルートのゴールを世界遺産にする（2026-11-10 ホッシー☆の指示）。
+// n＝ルートに使う区間の数（s.legs の先頭から）。hop＝最後に世界遺産まで行くひと区間（無い時は最後の区間で着く）。
+// ルートに入らない区間（遺跡めぐり・遊覧など）は「現地での交通」として下に分ける
+const ROUTE = {
+  it:{n:2, hop:{m:"🚶", t:"宮島桟橋 → 厳島神社", d:"徒歩 約12分（海沿いの参道）", h:0.2, p:0}},
+  tj:{n:3},
+  gw:{n:3},
+  aw:{n:2, hop:{m:"🛺", t:"シェムリアップ市内 → アンコール・ワット", d:"トゥクトゥク 約20分", h:0.35, p:0}},
+  co:{n:2, hop:{m:"🚇", t:"テルミニ駅 → コロッセオ駅", d:"地下鉄B線 約5分", h:0.1, p:250}},
+  ms:{n:4},
+  sh:{n:3},
+  sf:{n:2, hop:{m:"🚇", t:"カタルーニャ広場 → サグラダ・ファミリア駅", d:"地下鉄5号線 約10分", h:0.2, p:400}},
+  nc:{n:3, hop:{m:"🐴", t:"ホーエンシュヴァンガウ → ノイシュバンシュタイン城", d:"馬車 約20分（城の下まで）", h:0.35, p:1300}},
+  gz:{n:2, hop:{m:"🚕", t:"ギザのホテル → ピラミッド入口", d:"タクシー 約10分", h:0.2, p:800}},
+  sl:{n:3},
+  mp:{n:4},
+  gb:{n:2},
+  nz:{n:3},
+  gp:{n:3},
+};
+
 // 現地の時間帯（到着時刻を現地時間で出す。夏時間も自動）
 const TZ = {it:"Asia/Tokyo", tj:"Asia/Kolkata", gw:"Asia/Shanghai", aw:"Asia/Phnom_Penh", co:"Europe/Rome", ms:"Europe/Paris",
   sh:"Europe/London", sf:"Europe/Madrid", nc:"Europe/Berlin", gz:"Africa/Cairo", sl:"America/New_York", mp:"America/Lima",
@@ -733,32 +758,47 @@ function render(){
     legHtml += `<div class="leg"><div class="ic">🚕</div><div class="bd"><div class="t">${placeName ? placeName.replace(/^(東京都|北海道|(?:京都|大阪)府|.{2,3}県)/,"") : "現在地"} → ${o.name}</div><div class="d">タクシー 約${taxi.min}分</div><div class="tm">発 ${hm(clock)}<br>着 ${hm(arr)}（空港）</div></div><div class="p">${yen(taxi.yen)}</div></div>`;
     clock = arr;
   }
-  legs.forEach(L=>{
-    let t = L.t.replace("{O}", o.name.replace(/（.*）/,"")), d = L.d, p = L.p, h = L.h;
+  const R = ROUTE[sk] || {n: s.legs.length};
+  const nRoute = dom ? s.dom[okey].length + R.n : R.n;
+  const routeLegs = R.hop ? [...legs.slice(0, nRoute), {...R.hop, hop:true}] : legs.slice(0, nRoute);
+  const extraLegs = legs.slice(nRoute);
+  const abroad = TZ[sk] && TZ[sk] !== "Asia/Tokyo";
+  const jpDay = d => d.toLocaleDateString("ja-JP", {month:"numeric", day:"numeric"});
+  // 時刻の書き方：海外では日本時間を出し、（ ）に現地時間（現地の日付は、日本の日付と違う時だけ）
+  const fmt = (d, inJapan) => (abroad && !inJapan) ? `${hm(d, null, today)}<small>（現地 ${hm(d, TZ[sk], jpDay(d))}）</small>` : hm(d, null, today);
+  const legRow = (L, tm) => {
+    let t = L.t.replace("{O}", o.name.replace(/（.*）/,"")), d = L.d, p = L.p;
     if (L.first){
       t = L.t.replace("{O}", o.name);
-      if (!tokyo && !dom){ d = `${s.hub}乗継（往復）／約${Math.round(L.h + o.hrs)}時間`; p += o.add; h += o.hrs; }
+      if (!tokyo && !dom){ d = `${s.hub}乗継（往復）／約${Math.round(L.h + o.hrs)}時間`; p += o.add; }
       rows.push([L.lbl || "航空券（往復・エコノミー）", p]);
     } else rows.push([L.t, p]);
+    return `<div class="leg"><div class="ic">${L.m}</div><div class="bd"><div class="t">${t}</div><div class="d">${d}</div>${tm}</div><div class="p">${p?yen(p):(L.hop && L.m!=="🚶" ? "" : "無料")}</div></div>`;
+  };
+  // 世界遺産までの道：時間のかかる区間を順につなげて、発着の時刻（目安から計算した架空の時刻）
+  routeLegs.forEach((L, i)=>{
+    let h = L.h;
+    if (L.first && !tokyo && !dom) h += o.hrs;
     hrs += h;
-    // 発着の時刻（目安から計算した架空の時刻）。行きの便の後も、時間のかかる区間を順につなげる。
-    // 海外では日本時間を出し、（ ）に現地時間
     let tm = "";
-    const abroad = TZ[sk] && TZ[sk] !== "Asia/Tokyo";
     if (h > 0){
-      const first = L.first || (dom && legs.indexOf(L) === 0);
-      const wait = first ? (dom ? 30 : 120) : (prevFlight ? 75 : 40);   // 手続き・乗り換えの待ち（分）
+      const first = L.first || (dom && i === 0);
+      const wait = first ? (dom ? 30 : 120) : (prevFlight ? 75 : (L.hop ? 20 : 40));   // 手続き・乗り換えの待ち（分）
       const depT = ceil5(new Date(clock.getTime() + wait * 60000));
       const arrT = new Date(depT.getTime() + h * 3600000);
-      // 現地の日付は、日本の日付と違う時だけ出す
-      const jpDay = d => d.toLocaleDateString("ja-JP", {month:"numeric", day:"numeric"});
-      const fmt = (d, inJapan) => (abroad && !inJapan) ? `${hm(d, null, today)}<small>（現地 ${hm(d, TZ[sk], jpDay(d))}）</small>` : hm(d, null, today);
       tm = `<div class="tm">発 ${fmt(depT, first)}<br>着 ${fmt(arrT, false)}</div>`;
       clock = arrT;
       prevFlight = L.m === "✈️";
     }
-    legHtml += `<div class="leg"><div class="ic">${L.m}</div><div class="bd"><div class="t">${t}</div><div class="d">${d}</div>${tm}</div><div class="p">${p?yen(p):"無料"}</div></div>`;
+    legHtml += legRow(L, tm);
   });
+  // ゴール：世界遺産に到着
+  legHtml += `<div class="leg goal"><div class="ic">📍</div><div class="bd"><div class="t">${s.name} 到着</div><div class="tm">着 ${fmt(clock, false)}</div></div><div class="p"></div></div>`;
+  // ルートに入らない現地の交通（遺跡めぐり・遊覧など）
+  if (extraLegs.length){
+    legHtml += `<div class="subhd">現地での交通</div>`;
+    extraLegs.forEach(L=>{ legHtml += legRow(L, ""); });
+  }
   $("legs").innerHTML = legHtml;
   $("mTime").textContent = dom ? `片道 約${Math.round(legs.reduce((a,l)=>a+l.h,0))}時間`
                                : `片道 約${Math.round(s.legs.filter(l=>l.first)[0].h + (tokyo?0:o.hrs) + 2 + (taxi ? taxi.min/60 : 1))}時間`;
