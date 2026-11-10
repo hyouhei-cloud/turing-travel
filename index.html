@@ -3,17 +3,18 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>旅のプランナー</title>
+<title>Magical Tours</title>
 <meta name="robots" content="noindex">
 <style>
 :root{--ink:#1d2433;--sub:#6b7385;--line:#e6e8ee;--bg:#f4f5f8;--accent:#0b7a75;--accent2:#e8a33d;--card:#fff}
 *{box-sizing:border-box}
 body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif;background:var(--bg);color:var(--ink);-webkit-text-size-adjust:100%}
 .wrap{max-width:520px;margin:0 auto;padding-bottom:40px}
-header.top{display:flex;align-items:center;gap:8px;padding:12px 16px;background:#fff;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
-.logo{font-weight:800;letter-spacing:.02em;color:var(--accent);font-size:17px}
-.logo small{color:var(--sub);font-weight:600;font-size:11px;margin-left:6px}
-.saved{margin-left:auto;font-size:11px;color:var(--sub)}
+header.top{display:flex;align-items:center;gap:10px;padding:8px 16px;background:linear-gradient(90deg,#0c1240,#1e1650);border-bottom:1px solid #c9a35c;position:sticky;top:0;z-index:5}
+.logoImg{height:38px;width:auto}
+.logo{font-weight:700;letter-spacing:.03em;color:#e8c886;font-size:17px;font-family:"Hiragino Mincho ProN",serif}
+.logo small{color:#cfc6e8;font-weight:600;font-size:11px;margin-left:6px;font-family:-apple-system,sans-serif}
+.saved{margin-left:auto;font-size:11px;color:#cfc6e8}
 .search{margin:12px 16px 0;background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:6px}
 .search .row{display:flex;align-items:center;gap:10px;font-size:14px}
 .search .lab{width:44px;font-size:11px;color:var(--sub)}
@@ -41,6 +42,7 @@ h2{font-size:15px;margin:0 0 10px}
 .leg .t{font-weight:700;font-size:14px}
 .leg .d{font-size:12px;color:var(--sub);margin-top:2px;line-height:1.5}
 .leg .p{font-size:13px;font-weight:700;white-space:nowrap}
+.leg .tm{font-size:12px;font-weight:700;color:var(--accent);margin-top:3px}
 .hotel{display:flex;gap:12px;align-items:flex-start;padding:10px 0;border-top:1px solid var(--line)}
 .hotel:first-of-type{border-top:none;padding-top:0}
 .hotel .ph{flex:none;width:64px;height:64px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:28px}
@@ -82,7 +84,7 @@ tr.sum td{border-bottom:none;font-weight:800;font-size:15px;padding-top:10px}
 </head>
 <body>
 <div class="wrap">
-  <header class="top"><div class="logo">TABIPLAN<small>旅のプランナー</small></div><div class="saved" id="saved"></div></header>
+  <header class="top"><img class="logoImg" src="logo.png" alt="Magical Tours"><div class="logo">Magical Tours<small>旅のプラン</small></div><div class="saved" id="saved"></div></header>
 
   <div class="search">
     <div class="row"><span class="lab">出発地</span><input id="inFrom" readonly></div>
@@ -573,26 +575,51 @@ const yen = n => "¥" + Math.round(n).toLocaleString("ja-JP");
 const $ = id => document.getElementById(id);
 const P = (lon,lat) => [(lon+180)/360*1000, (90-lat)/180*500];
 
-// 記号の形は2つ：手で打つ「#mp-hnd」と、アプリが送る「#mphndmphnd0」
-// （同じ組み合わせを2回並べ、最後に0。途中の1文字が抜けても、どこかに正しい5文字が残る）
+// 記号の形は3つ：手で打つ「#mp-hnd」、前の形「#mphndmphnd0」、
+// アプリが送る「#mphnd0320840mphnd03208400」（遺産2文字・空港3文字・タクシーの分3桁・タクシー代の10円単位4桁を2回並べ、最後に0）。
+// 途中の1文字が抜けても、どこかに正しい組み合わせが残る
 function parseHash(){
   const h = decodeURIComponent(location.hash.replace(/^#/,"")).toLowerCase();
   if (h.includes("-")){
     const [s,o] = h.split("-");
-    return { site: SITES[s] ? s : "mp", origin: ORIGINS[o] ? o : "hnd" };
+    return { site: SITES[s] ? s : "mp", origin: ORIGINS[o] ? o : "hnd", taxi: null };
   }
-  const t = h.replace(/[^a-z]/g,"");
-  for (let i = 0; i + 5 <= t.length; i++){
-    const s = t.slice(i,i+2), o = t.slice(i+2,i+5);
-    if (SITES[s] && ORIGINS[o]) return { site: s, origin: o };
+  const t = h.replace(/[^a-z0-9]/g,"");
+  const re = /([a-z]{2})([a-z]{3})(\d{3})(\d{4})/g;
+  let m;
+  while ((m = re.exec(t))){
+    if (SITES[m[1]] && ORIGINS[m[2]]){
+      const min = +m[3], yen = +m[4] * 10;
+      return { site: m[1], origin: m[2], taxi: (min > 0 && yen > 0) ? {min, yen} : null };
+    }
+    re.lastIndex = m.index + 1;
   }
-  // 空港の記号が壊れていても、遺産だけは探す
-  for (let i = 0; i + 2 <= t.length; i++){
-    const s = t.slice(i,i+2);
-    if (SITES[s]) return { site: s, origin: "hnd" };
+  const l = t.replace(/[0-9]/g,"");
+  for (let i = 0; i + 5 <= l.length; i++){
+    const s = l.slice(i,i+2), o = l.slice(i+2,i+5);
+    if (SITES[s] && ORIGINS[o]) return { site: s, origin: o, taxi: null };
   }
-  return { site: "mp", origin: "hnd" };
+  for (let i = 0; i + 2 <= l.length; i++){
+    const s = l.slice(i,i+2);
+    if (SITES[s]) return { site: s, origin: "hnd", taxi: null };
+  }
+  return { site: "mp", origin: "hnd", taxi: null };
 }
+
+// 現地の時間帯（到着時刻を現地時間で出す。夏時間も自動）
+const TZ = {it:"Asia/Tokyo", tj:"Asia/Kolkata", gw:"Asia/Shanghai", aw:"Asia/Phnom_Penh", co:"Europe/Rome", ms:"Europe/Paris",
+  sh:"Europe/London", sf:"Europe/Madrid", nc:"Europe/Berlin", gz:"Africa/Cairo", sl:"America/New_York", mp:"America/Lima",
+  gb:"Australia/Brisbane", nz:"America/Lima", gp:"Pacific/Galapagos"};
+// 時刻の表示（hh:mm）。zone を渡すとその土地の時刻、日付が出発日と違えば「11/12 」を前に付ける
+function hm(d, zone, baseDay){
+  const o = {hour:"2-digit", minute:"2-digit", hour12:false};
+  if (zone) o.timeZone = zone;
+  const t = d.toLocaleTimeString("ja-JP", o);
+  const day = d.toLocaleDateString("ja-JP", zone ? {month:"numeric", day:"numeric", timeZone:zone} : {month:"numeric", day:"numeric"});
+  return (baseDay && day !== baseDay ? day + " " : "") + t;
+}
+// 5分刻みに切り上げ
+const ceil5 = d => new Date(Math.ceil(d.getTime() / 300000) * 300000);
 
 function drawMap(site, origin){
   let [ox,oy] = P(origin.lon, origin.lat), [dx,dy] = P(site.lon, site.lat);
@@ -631,7 +658,7 @@ function setPhoto(box, img, src, bg, lbl, lblText){
 const NOTE_INTL = document.getElementById("note").textContent;   // 海外用の注意書き（最初の文のまま）
 
 function render(){
-  const {site:sk, origin:okey} = parseHash();
+  const {site:sk, origin:okey, taxi} = parseHash();
   const s = SITES[sk], o = ORIGINS[okey];
   const tokyo = (okey==="hnd"||okey==="nrt");
 
@@ -653,11 +680,11 @@ function render(){
   $("spots").innerHTML = (s.spots||[]).map((p,i)=>`<div class="spot"><div class="ph-box" data-src="${p.src||""}" style="background:${p.bg}"><span class="lbl">写真：${p.nm}</span><img alt="${p.nm}"><span class="no">みどころ ${i+1}</span></div><div class="bd"><div class="nm">${p.nm}</div><div class="d">${p.d}</div></div></div>`).join("");
   $("spots").querySelectorAll(".ph-box").forEach(b=>setPhoto(b, b.querySelector("img"), b.dataset.src, null, b.querySelector(".lbl")));
 
-  // 出発日：今日から約2か月後の土曜日
-  const dep = new Date(); dep.setDate(dep.getDate()+60); dep.setDate(dep.getDate() + ((6-dep.getDay()+7)%7));
+  // 出発日：今日（ページを開いた時刻から出発する。2026-11-10 ホッシー☆の指示）
+  const dep = new Date();
   const ret = new Date(dep); ret.setDate(ret.getDate()+s.days-1);
   const f = d => `${d.getMonth()+1}/${d.getDate()}（${"日月火水木金土"[d.getDay()]}）`;
-  $("mDate").textContent = f(dep);
+  $("mDate").textContent = f(dep) + " " + hm(dep);
   $("mDays").textContent = `${s.nights}泊${s.days}日`;
   const now = new Date();
   $("saved").textContent = `保存済み ${now.getMonth()+1}/${now.getDate()}`;
@@ -666,6 +693,14 @@ function render(){
   const dom = !!s.domestic;   // 国内（厳島神社）：出発地ごとの行き方に置き換え、乗継・燃油の話は出さない
   const legs = dom ? [...s.dom[okey], ...s.legs.filter(l=>!l.first)] : s.legs;
   let rows = [], legHtml = "", hrs = 0;
+  // 時刻：今出発 → （タクシーで空港へ）→ 手続きの後に出発 → 現地に到着（現地時間）
+  const today = new Date().toLocaleDateString("ja-JP", {month:"numeric", day:"numeric"});
+  let clock = new Date();
+  if (taxi && !dom){
+    const arr = new Date(clock.getTime() + taxi.min * 60000);
+    legHtml += `<div class="leg"><div class="ic">🚕</div><div class="bd"><div class="t">現在地 → ${o.name}</div><div class="d">タクシー 約${taxi.min}分</div><div class="tm">${hm(clock)} 出発 → ${hm(arr)} 空港着</div></div><div class="p">${yen(taxi.yen)}</div></div>`;
+    clock = arr;
+  }
   legs.forEach(L=>{
     let t = L.t.replace("{O}", o.name.replace(/（.*）/,"")), d = L.d, p = L.p, h = L.h;
     if (L.first){
@@ -674,11 +709,18 @@ function render(){
       rows.push([L.lbl || "航空券（往復・エコノミー）", p]);
     } else rows.push([L.t, p]);
     hrs += h;
-    legHtml += `<div class="leg"><div class="ic">${L.m}</div><div class="bd"><div class="t">${t}</div><div class="d">${d}</div></div><div class="p">${p?yen(p):"無料"}</div></div>`;
+    // 最初の便（行き）だけ、発着の時刻を出す
+    let tm = "";
+    if (L.first || (dom && legs.indexOf(L) === 0)){
+      const depT = ceil5(new Date(clock.getTime() + (dom ? 30 : 120) * 60000));
+      const arrT = new Date(depT.getTime() + h * 3600000);
+      tm = `<div class="tm">${hm(depT, null, today)} 発 → ${hm(arrT, TZ[sk], today)} 着${(TZ[sk] && TZ[sk] !== "Asia/Tokyo") ? "（現地時間）" : ""}</div>`;
+    }
+    legHtml += `<div class="leg"><div class="ic">${L.m}</div><div class="bd"><div class="t">${t}</div><div class="d">${d}</div>${tm}</div><div class="p">${p?yen(p):"無料"}</div></div>`;
   });
   $("legs").innerHTML = legHtml;
   $("mTime").textContent = dom ? `片道 約${Math.round(legs.reduce((a,l)=>a+l.h,0))}時間`
-                               : `片道 約${Math.round(s.legs.filter(l=>l.first)[0].h + (tokyo?0:o.hrs) + 3)}時間`;
+                               : `片道 約${Math.round(s.legs.filter(l=>l.first)[0].h + (tokyo?0:o.hrs) + 2 + (taxi ? taxi.min/60 : 1))}時間`;
 
   // 宿
   let hotelSum = 0;
@@ -695,8 +737,10 @@ function render(){
   // 内訳
   const ground = rows.slice(1).reduce((a,r)=>a+r[1],0);
   const fees = s.fees.reduce((a,r)=>a+r[1],0);
-  const total = rows[0][1] + ground + hotelSum + fees;
+  const taxiYen = (taxi && !dom) ? taxi.yen : 0;
+  const total = rows[0][1] + ground + hotelSum + fees + taxiYen;
   const cost = [
+    ...(taxiYen ? [["空港までのタクシー", taxiYen]] : []),
     [rows[0][0], rows[0][1]],
     ["現地の交通", ground],
     [`宿泊（${s.nights}泊・${dom?"2食付":"朝食付"}）`, hotelSum],
